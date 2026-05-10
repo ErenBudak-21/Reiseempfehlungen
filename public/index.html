@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Neo4J Reiseempfehlungen</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="header-brand">&#9992; Neo4J Reiseempfehlungen</div>
+  </header>
+
+  <nav class="main-nav">
+    <a href="#" class="nav-link active" data-tab="dashboard">Dashboard</a>
+    <a href="#" class="nav-link" data-tab="users">Nutzer</a>
+    <a href="#" class="nav-link" data-tab="properties">Unterk&uuml;nfte</a>
+    <a href="#" class="nav-link" data-tab="bookings">Buchungen</a>
+    <a href="#" class="nav-link" data-tab="paths">Pfadabfragen</a>
+    <a href="#" class="nav-link" data-tab="stats">Statistiken</a>
+    <a href="#" class="nav-link" data-tab="recommendations">Empfehlungen</a>
+  </nav>
+
+  <main class="main-content">
+
+    <!-- ===== DASHBOARD ===== -->
+    <section id="tab-dashboard" class="tab-section active">
+      <h1>Dashboard</h1>
+      <p class="hint">Aktuelle Kennzahlen direkt aus der Neo4J-Datenbank.</p>
+      <div id="dashboard-cards" class="cards-row"></div>
+      <div id="dashboard-query" class="query-area"></div>
+    </section>
+
+    <!-- ===== NUTZER ===== -->
+    <section id="tab-users" class="tab-section">
+      <h1>Nutzer</h1>
+
+      <div class="panel">
+        <h2>Nutzer anlegen / bearbeiten</h2>
+        <form id="user-form" class="form-grid">
+          <input type="hidden" id="user-edit-id">
+          <div class="form-row">
+            <label for="user-name">Name</label>
+            <input type="text" id="user-name" placeholder="Vorname Nachname" required>
+          </div>
+          <div class="form-row">
+            <label for="user-email">E-Mail</label>
+            <input type="email" id="user-email" placeholder="email@example.com">
+          </div>
+          <div class="form-row">
+            <label for="user-age">Alter</label>
+            <input type="number" id="user-age" placeholder="25" min="1" max="120">
+          </div>
+          <div class="form-row">
+            <label for="user-praeferenz">Pr&auml;ferenz</label>
+            <select id="user-praeferenz">
+              <option value="">&ndash; keine &ndash;</option>
+            </select>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="user-submit-btn">Erstellen</button>
+            <button type="button" class="btn btn-secondary" id="user-cancel-btn" style="display:none">Abbrechen</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Alle Nutzer</h2>
+          <button class="btn btn-sm" onclick="loadUsers()">Aktualisieren</button>
+        </div>
+        <div id="users-query" class="query-area"></div>
+        <div id="users-table"></div>
+      </div>
+    </section>
+
+    <!-- ===== UNTERKÜNFTE ===== -->
+    <section id="tab-properties" class="tab-section">
+      <h1>Unterk&uuml;nfte</h1>
+
+      <div class="panel">
+        <h2>Filter / Suche</h2>
+        <div class="filter-row">
+          <select id="prop-filter-category">
+            <option value="">Alle Kategorien</option>
+          </select>
+          <select id="prop-filter-city">
+            <option value="">Alle St&auml;dte</option>
+          </select>
+          <input type="number" id="prop-filter-rating" placeholder="Min. Rating (z.B. 4)" step="0.1" min="0" max="5">
+          <button class="btn btn-primary" onclick="searchProperties()">Suchen</button>
+          <button class="btn btn-secondary" onclick="clearPropertyFilter()">Zur&uuml;cksetzen</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Unterkunft anlegen / bearbeiten</h2>
+        <form id="property-form" class="form-grid">
+          <input type="hidden" id="prop-edit-id">
+          <div class="form-row">
+            <label for="prop-name">Name</label>
+            <input type="text" id="prop-name" placeholder="Hotel Name">
+          </div>
+          <div class="form-row">
+            <label for="prop-type">Typ</label>
+            <input type="text" id="prop-type" placeholder="Hotel / Hostel / Apartment">
+          </div>
+          <div class="form-row">
+            <label for="prop-price">Preis/Nacht (&euro;)</label>
+            <input type="number" id="prop-price" placeholder="120" step="0.01" min="0">
+          </div>
+          <div class="form-row">
+            <label for="prop-rating">Rating</label>
+            <input type="number" id="prop-rating" placeholder="4.5" step="0.1" min="0" max="5">
+          </div>
+          <div class="form-row">
+            <label for="prop-city">Stadt</label>
+            <select id="prop-city">
+              <option value="">&ndash; Stadt w&auml;hlen &ndash;</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="prop-category">Kategorie</label>
+            <select id="prop-category">
+              <option value="">&ndash; Kategorie w&auml;hlen &ndash;</option>
+            </select>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="prop-submit-btn">Erstellen</button>
+            <button type="button" class="btn btn-secondary" id="prop-cancel-btn" style="display:none">Abbrechen</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Suchergebnisse</h2>
+        </div>
+        <div id="properties-query" class="query-area"></div>
+        <div id="properties-table"></div>
+      </div>
+    </section>
+
+    <!-- ===== BUCHUNGEN ===== -->
+    <section id="tab-bookings" class="tab-section">
+      <h1>Buchungen</h1>
+
+      <div class="panel">
+        <h2>Buchung erfassen (Verkn&uuml;pfung anlegen)</h2>
+        <form id="booking-form" class="form-grid">
+          <input type="hidden" id="booking-id">
+          <div class="form-row">
+            <label for="booking-user">Nutzer</label>
+            <select id="booking-user">
+              <option value="">&ndash; Nutzer w&auml;hlen &ndash;</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="booking-property">Unterkunft</label>
+            <select id="booking-property">
+              <option value="">&ndash; Unterkunft w&auml;hlen &ndash;</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="booking-checkin">Check-In</label>
+            <input type="date" id="booking-checkin">
+          </div>
+          <div class="form-row">
+            <label for="booking-checkout">Check-Out</label>
+            <input type="date" id="booking-checkout">
+          </div>
+          <div class="form-row">
+            <label for="booking-price">Preis (&euro;)</label>
+            <input type="number" id="booking-price" placeholder="350" step="0.01" min="0">
+          </div>
+          <div class="form-row">
+            <label for="booking-guests">G&auml;ste</label>
+            <input type="number" id="booking-guests" placeholder="2" min="1">
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Buchung anlegen</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Alle Buchungen</h2>
+          <button class="btn btn-sm" onclick="loadBookings()">Aktualisieren</button>
+        </div>
+        <div id="bookings-query" class="query-area"></div>
+        <div id="bookings-table"></div>
+      </div>
+    </section>
+
+    <!-- ===== PFADABFRAGEN ===== -->
+    <section id="tab-paths" class="tab-section">
+      <h1>Pfadabfragen</h1>
+
+      <div class="panel">
+        <label><strong>Nutzer w&auml;hlen:</strong></label>
+        <select id="path-user-select" style="margin-left: 0.5rem; margin-right: 0.5rem">
+          <option value="">&ndash; Nutzer w&auml;hlen &ndash;</option>
+        </select>
+        <button class="btn btn-primary" onclick="runPaths()">Abfragen</button>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <h2>Buchungen des Nutzers</h2>
+          <div id="path2-query" class="query-area"></div>
+          <div id="path2-table"></div>
+        </div>
+        <div class="panel">
+          <h2>Reiseverlauf (Nutzer &rarr; Unterkunft &rarr; Stadt &rarr; Land)</h2>
+          <div id="path4-query" class="query-area"></div>
+          <div id="path4-table"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== STATISTIKEN ===== -->
+    <section id="tab-stats" class="tab-section">
+      <h1>Statistiken</h1>
+
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>&Oslash; Preis pro Stadt <small style="font-weight:normal">(Rating &ge; 4)</small></h2>
+            <button class="btn btn-sm" onclick="loadStats()">Laden</button>
+          </div>
+          <div id="stats-city-query" class="query-area"></div>
+          <div id="stats-city-table"></div>
+        </div>
+        <div class="panel">
+          <h2>Buchungen &amp; Umsatz pro Kategorie</h2>
+          <div id="stats-cat-query" class="query-area"></div>
+          <div id="stats-cat-table"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== EMPFEHLUNGEN ===== -->
+    <section id="tab-recommendations" class="tab-section">
+      <h1>Reiseempfehlungen</h1>
+      <p class="hint">Personalisierte Empfehlungen auf Basis &auml;hnlicher Nutzer und deiner Kategorie-Pr&auml;ferenz.</p>
+
+      <div class="panel">
+        <label><strong>Nutzer w&auml;hlen:</strong></label>
+        <select id="rec-user-select" style="margin-left: 0.5rem; margin-right: 0.5rem">
+          <option value="">&ndash; Nutzer w&auml;hlen &ndash;</option>
+        </select>
+        <button class="btn btn-primary" onclick="loadRecommendations()">Empfehlungen anzeigen</button>
+      </div>
+
+      <div id="rec-query" class="query-area"></div>
+      <div id="rec-cards"></div>
+    </section>
+
+  </main>
+
+  <div id="toast-container"></div>
+
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/users.js"></script>
+  <script src="js/properties.js"></script>
+  <script src="js/bookings.js"></script>
+  <script src="js/paths.js"></script>
+  <script src="js/stats.js"></script>
+  <script src="js/recommendations.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

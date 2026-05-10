@@ -63,7 +63,7 @@ app.get('/api/users', async (req, res) => {
       OPTIONAL MATCH (u)-[:PREFERS]->(c:Category)
       RETURN u.id AS id, u.name AS name, u.email AS email, u.age AS age,
              c.name AS praeferenz
-      ORDER BY u.name
+      ORDER BY toInteger(substring(u.id, 1)) ASC
     `)
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -130,7 +130,7 @@ app.get('/api/properties', async (req, res) => {
     RETURN p.id AS id, p.name AS name, p.type AS type,
            p.pricePerNight AS preis, p.rating AS rating,
            city.name AS stadt, country.name AS land, cat.name AS kategorie
-    ORDER BY p.rating DESC
+    ORDER BY toInteger(substring(p.id, 1)) ASC
   `
   try {
     const result = await runQuery(query, params)
@@ -149,7 +149,7 @@ app.get('/api/bookings', async (req, res) => {
       RETURN b.id AS id, u.name AS user, p.name AS property,
              b.checkIn AS checkIn, b.checkOut AS checkOut,
              b.price AS preis, b.numGuests AS gaeste
-      ORDER BY b.checkIn DESC
+      ORDER BY toInteger(substring(b.id, 1)) ASC
     `)
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -292,6 +292,58 @@ app.get('/api/dashboard', async (req, res) => {
                              round(avg(b.price) * 100) / 100 AS avg_preis
       RETURN users, properties, bookings, avg_preis
     `)
+    res.json(result)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// =============================================================
+// PROPERTIES - CRUD (Erfassen, Ändern, Löschen)
+// =============================================================
+
+// Property erstellen (mit City- und Category-Verknüpfung)
+app.post('/api/properties', async (req, res) => {
+  const { id, name, type, pricePerNight, rating, cityName, categoryName } = req.body
+  try {
+    const result = await runQuery(`
+      MATCH (city:City {name: $cityName})
+      CREATE (p:Property {
+        id: $id, name: $name, type: $type,
+        pricePerNight: toFloat($pricePerNight),
+        rating: toFloat($rating)
+      })-[:LOCATED_IN]->(city)
+      WITH p
+      OPTIONAL MATCH (cat:Category {name: $categoryName})
+      FOREACH (c IN CASE WHEN cat IS NOT NULL THEN [c] ELSE [] END |
+        CREATE (p)-[:OF_CATEGORY]->(c)
+      )
+      RETURN p.id AS id, p.name AS name
+    `, { id, name, type, pricePerNight, rating, cityName, categoryName })
+    res.json(result)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Property ändern
+app.put('/api/properties/:id', async (req, res) => {
+  const { name, type, pricePerNight, rating } = req.body
+  try {
+    const result = await runQuery(`
+      MATCH (p:Property {id: $id})
+      SET p.name = $name, p.type = $type,
+          p.pricePerNight = toFloat($pricePerNight),
+          p.rating = toFloat($rating)
+      RETURN p.id AS id, p.name AS name
+    `, { id: req.params.id, name, type, pricePerNight, rating })
+    res.json(result)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Property löschen (DETACH wegen Buchungs-Beziehungen)
+app.delete('/api/properties/:id', async (req, res) => {
+  try {
+    const result = await runQuery(`
+      MATCH (p:Property {id: $id})
+      DETACH DELETE p
+    `, { id: req.params.id })
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
