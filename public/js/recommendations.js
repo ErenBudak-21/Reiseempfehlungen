@@ -1,4 +1,26 @@
-// Empfehlungen-Tab: Reisevorschlag per Collaborative Filtering
+// Empfehlungen-Tab: HTML-Template + Collaborative Filtering
+
+function getRecommendationsTemplate() {
+  return `
+    <section id="tab-recommendations" class="tab-section">
+      <h1>Reiseempfehlungen</h1>
+      <p class="hint">Personalisierte Empfehlungen auf Basis &auml;hnlicher Nutzer und deiner Kategorie-Pr&auml;ferenz.</p>
+
+      <div class="panel">
+        <label><strong>Nutzer w&auml;hlen:</strong></label>
+        <select id="rec-user-select" style="margin: 0 0.5rem">
+          <option value="">&ndash; Nutzer w&auml;hlen &ndash;</option>
+        </select>
+        <button class="btn btn-primary" onclick="loadRecommendations()">Empfehlungen anzeigen</button>
+      </div>
+
+      <div id="rec-query" class="query-area"></div>
+      <div id="rec-cards"></div>
+    </section>
+  `
+}
+
+// ── Logik ────────────────────────────────────────────────────
 
 async function initRecommendations() {
   const sel = document.getElementById('rec-user-select')
@@ -12,23 +34,17 @@ async function initRecommendations() {
 
 async function loadRecommendations() {
   const userId = document.getElementById('rec-user-select').value
-  if (!userId) {
-    toast('Bitte einen Nutzer wählen', 'error')
-    return
-  }
+  if (!userId) { toast('Bitte einen Nutzer wählen', 'error'); return }
 
-  const queryEl = document.getElementById('rec-query')
-  const cardsEl = document.getElementById('rec-cards')
-
-  cardsEl.innerHTML = '<p class="empty-msg">Wird geladen…</p>'
+  document.getElementById('rec-cards').innerHTML = '<p class="empty-msg">Wird geladen…</p>'
 
   try {
     const result = await Api.recommendations(userId)
-    renderQueryBox(result, queryEl)
-    renderRecCards(result.data, cardsEl)
+    renderQueryBox(result, document.getElementById('rec-query'))
+    renderRecCards(result.data, document.getElementById('rec-cards'))
   } catch (e) {
     toast('Fehler bei Empfehlungen: ' + e.message, 'error')
-    cardsEl.innerHTML = '<p class="empty-msg">Fehler beim Laden.</p>'
+    document.getElementById('rec-cards').innerHTML = '<p class="empty-msg">Fehler beim Laden.</p>'
   }
 }
 
@@ -38,7 +54,7 @@ function renderRecCards(data, container) {
       <div class="rec-empty">
         <div class="rec-empty-icon">&#128214;</div>
         <p>Keine Empfehlungen gefunden.</p>
-        <p class="rec-empty-hint">Der Nutzer hat noch keine Buchungen oder es gibt keine ähnlichen Nutzer.</p>
+        <p class="rec-empty-hint">Der Nutzer hat noch keine Buchungen oder es gibt keine &auml;hnlichen Nutzer.</p>
       </div>
     `
     return
@@ -47,22 +63,22 @@ function renderRecCards(data, container) {
   const maxScore = Math.max(...data.map(d => d.score ?? 0)) || 1
 
   const html = data.map(item => {
-    const stars     = renderStars(item.rating ?? 0)
-    const scorePct  = Math.round(((item.score ?? 0) / maxScore) * 100)
-    const kategorie = item.kategorie ?? item.typ ?? '–'
-
+    const stars    = renderStars(item.rating ?? 0)
+    const scorePct = Math.round(((item.score ?? 0) / maxScore) * 100)
     return `
       <div class="rec-card">
         <div class="rec-card-top">
-          <span class="rec-card-category">${escHtml(kategorie)}</span>
-          <span class="rec-card-rating">${stars} <span class="rec-card-ratingval">${item.rating ?? '–'}</span></span>
+          <span class="rec-card-category">${escHtml(item.kategorie ?? item.typ ?? '–')}</span>
+          <span class="rec-card-rating">${stars}
+            <span class="rec-card-ratingval">${item.rating ?? '–'}</span>
+          </span>
         </div>
         <div class="rec-card-name">${escHtml(item.property)}</div>
         <div class="rec-card-type">${escHtml(item.typ ?? '–')}</div>
         <div class="rec-card-score">
           <div class="rec-card-score-label">Relevanz</div>
           <div class="rec-card-score-bar">
-            <div class="rec-card-score-fill" style="width: ${scorePct}%"></div>
+            <div class="rec-card-score-fill" style="width:${scorePct}%"></div>
           </div>
           <div class="rec-card-score-val">Score: ${item.score ?? 0}</div>
         </div>

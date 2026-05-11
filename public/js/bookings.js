@@ -1,4 +1,61 @@
-// Buchungen-Tab: Verknüpfungen (User)-[:MADE]->(Booking)-[:FOR]->(Property)
+// Buchungen-Tab: HTML-Template + Verknüpfungen (User)-[:MADE]->(Booking)-[:FOR]->(Property)
+
+function getBookingsTemplate() {
+  return `
+    <section id="tab-bookings" class="tab-section">
+      <h1>Buchungen</h1>
+
+      <div class="panel">
+        <h2>Buchung erfassen</h2>
+        <form id="booking-form" class="form-grid">
+          <input type="hidden" id="booking-id">
+          <div class="form-row">
+            <label for="booking-user">Nutzer</label>
+            <select id="booking-user">
+              <option value="">&ndash; Nutzer w&auml;hlen &ndash;</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="booking-property">Unterkunft</label>
+            <select id="booking-property">
+              <option value="">&ndash; Unterkunft w&auml;hlen &ndash;</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="booking-checkin">Check-In</label>
+            <input type="date" id="booking-checkin">
+          </div>
+          <div class="form-row">
+            <label for="booking-checkout">Check-Out</label>
+            <input type="date" id="booking-checkout">
+          </div>
+          <div class="form-row">
+            <label for="booking-price">Preis (&euro;)</label>
+            <input type="number" id="booking-price" placeholder="350" step="0.01" min="0">
+          </div>
+          <div class="form-row">
+            <label for="booking-guests">G&auml;ste</label>
+            <input type="number" id="booking-guests" placeholder="2" min="1">
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Buchung anlegen</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Alle Buchungen</h2>
+          <button class="btn btn-sm" onclick="loadBookings()">Aktualisieren</button>
+        </div>
+        <div id="bookings-query" class="query-area"></div>
+        <div id="bookings-table"></div>
+      </div>
+    </section>
+  `
+}
+
+// ── Logik ────────────────────────────────────────────────────
 
 let _bookingPropertiesCache = []
 let _bookingsCache = []
@@ -8,7 +65,6 @@ async function initBookings() {
     populateBookingUsers(),
     populateBookingProperties()
   ])
-
   setupBookingForm()
   await loadBookings()
 }
@@ -48,7 +104,8 @@ async function loadBookings() {
       document.getElementById('bookings-query'),
       document.getElementById('bookings-table'),
       row => `
-        <button class="btn btn-xs btn-delete" onclick="confirmDeleteBooking('${escHtml(row.id)}')">L&ouml;schen</button>
+        <button class="btn btn-xs btn-delete"
+          onclick="confirmDeleteBooking('${escHtml(row.id)}')">L&ouml;schen</button>
       `
     )
   } catch (e) {
@@ -57,7 +114,6 @@ async function loadBookings() {
 }
 
 function setupBookingForm() {
-  // Preis automatisch aus gewählter Unterkunft befüllen
   document.getElementById('booking-property').onchange = function () {
     const prop = _bookingPropertiesCache.find(p => p.id === this.value)
     if (prop && prop.preis) {
@@ -67,15 +123,13 @@ function setupBookingForm() {
 
   document.getElementById('booking-form').onsubmit = async (e) => {
     e.preventDefault()
-
     const userId     = document.getElementById('booking-user').value
     const propertyId = document.getElementById('booking-property').value
-
     if (!userId)     { toast('Bitte einen Nutzer wählen', 'error');     return }
     if (!propertyId) { toast('Bitte eine Unterkunft wählen', 'error'); return }
 
     const data = {
-      id:        document.getElementById('booking-id').value.trim() || genId('b'),
+      id:        document.getElementById('booking-id').value || nextId('B', _bookingsCache),
       userId,
       propertyId,
       checkIn:   document.getElementById('booking-checkin').value,
@@ -83,12 +137,11 @@ function setupBookingForm() {
       price:     document.getElementById('booking-price').value,
       numGuests: document.getElementById('booking-guests').value,
     }
-
     try {
       await Api.createBooking(data)
       toast('Buchung erfolgreich angelegt')
       document.getElementById('booking-form').reset()
-      await loadBookings() // setzt die nächste ID automatisch neu
+      await loadBookings()
     } catch (e) {
       toast('Fehler: ' + e.message, 'error')
     }
