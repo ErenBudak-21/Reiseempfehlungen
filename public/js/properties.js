@@ -15,7 +15,7 @@ function getPropertiesTemplate() {
             <option value="">Alle St&auml;dte</option>
           </select>
           <input type="number" id="prop-filter-rating"
-            placeholder="Min. Rating (z.B. 4)" step="0.1" min="0" max="5">
+            placeholder="Min. Rating (z.B. 4)" step="1" min="0" max="5">
           <button class="btn btn-primary" onclick="searchProperties()">Suchen</button>
           <button class="btn btn-secondary" onclick="clearPropertyFilter()">Zur&uuml;cksetzen</button>
         </div>
@@ -35,17 +35,17 @@ function getPropertiesTemplate() {
           </div>
           <div class="form-row">
             <label for="prop-price">Preis / Nacht (&euro;)</label>
-            <input type="number" id="prop-price" placeholder="120" step="0.01" min="0">
+            <input type="number" id="prop-price" placeholder="120" step="1" min="0">
           </div>
           <div class="form-row">
             <label for="prop-rating">Rating</label>
-            <input type="number" id="prop-rating" placeholder="4.5" step="0.1" min="0" max="5">
+            <input type="number" id="prop-rating" placeholder="4" step="1" min="0" max="5">
           </div>
           <div class="form-row">
             <label for="prop-city">Stadt</label>
-            <select id="prop-city">
-              <option value="">&ndash; Stadt w&auml;hlen &ndash;</option>
-            </select>
+            <input type="text" id="prop-city" list="city-suggestions"
+              placeholder="Stadt eingeben oder w&auml;hlen" autocomplete="off">
+            <datalist id="city-suggestions"></datalist>
           </div>
           <div class="form-row">
             <label for="prop-category">Kategorie</label>
@@ -76,10 +76,20 @@ function getPropertiesTemplate() {
 let _propertiesCache = []
 
 async function initProperties() {
+  // Filter-Dropdowns mit vorhandenen Werten befüllen
   fillSelect(document.getElementById('prop-filter-category'), _categories, 'name', 'name', 'Alle Kategorien')
   fillSelect(document.getElementById('prop-filter-city'),     _cities,     'name', 'name', 'Alle Städte')
-  fillSelect(document.getElementById('prop-city'),            _cities,     'name', 'name', '– Stadt wählen –')
-  fillSelect(document.getElementById('prop-category'),        _categories, 'name', 'name', '– Kategorie wählen –')
+
+  // Datalist für Stadtvorschläge befüllen (Freitext + Vorschläge)
+  const cityList = document.getElementById('city-suggestions')
+  cityList.innerHTML = ''
+  _cities.forEach(c => {
+    const opt = document.createElement('option')
+    opt.value = c.name
+    cityList.appendChild(opt)
+  })
+
+  fillSelect(document.getElementById('prop-category'), _categories, 'name', 'name', '– Kategorie wählen –')
   setupPropertyForm()
   await searchProperties()
 }

@@ -1,5 +1,4 @@
-// Einstiegspunkt: baut die App aus den Modul-Templates zusammen,
-// steuert Navigation und lädt gemeinsame Stammdaten
+// Einstiegspunkt: App aufbauen, Navigation steuern, Stammdaten laden
 
 let _categories = []
 let _cities = []
@@ -11,7 +10,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   switchTab('dashboard')
 })
 
-// Alle Tab-Inhalte per Template-Funktion in den App-Container rendern
+// Alle Tab-Inhalte per Modul-Template in den App-Container rendern
 function buildApp() {
   document.getElementById('app').innerHTML = [
     getDashboardTemplate(),
@@ -19,7 +18,6 @@ function buildApp() {
     getPropertiesTemplate(),
     getBookingsTemplate(),
     getPathsTemplate(),
-    getStatsTemplate(),
     getRecommendationsTemplate()
   ].join('')
 }
@@ -50,12 +48,11 @@ function switchTab(tabName) {
     case 'properties':      initProperties();        break
     case 'bookings':        initBookings();          break
     case 'paths':           initPaths();             break
-    case 'stats':           loadStats();             break
     case 'recommendations': initRecommendations();   break
   }
 }
 
-// Gemeinsame Stammdaten (Kategorien + Städte) für Dropdowns laden
+// Gemeinsame Stammdaten für Dropdowns laden
 async function loadSharedData() {
   try {
     const [catRes, cityRes] = await Promise.all([
@@ -64,26 +61,35 @@ async function loadSharedData() {
     ])
     _categories = catRes.data
     _cities     = cityRes.data
-  } catch (e) {
-    // Fehler werden in den jeweiligen Tabs angezeigt
-  }
+  } catch (e) { /* Fehler erscheinen in den jeweiligen Tabs */ }
 }
 
-// ── Dashboard Template & Logik ────────────────────────────────
+// ── Dashboard: Überblickszahlen + Aggregation ─────────────────
 
 function getDashboardTemplate() {
   return `
     <section id="tab-dashboard" class="tab-section">
       <h1>Dashboard</h1>
       <div id="dashboard-cards" class="cards-row"></div>
+      <div class="panel">
+        <h2>&Oslash; Buchungspreis nach Stadt
+          <small style="font-weight:normal">&nbsp;(nur Unterk&uuml;nfte mit Rating &ge; 4)</small>
+        </h2>
+        <div id="dashboard-stats"></div>
+      </div>
     </section>
   `
 }
 
 async function initDashboard() {
   try {
-    const result = await Api.dashboard()
-    const d = result.data[0] || {}
+    // Überblickszahlen und Aggregation parallel laden
+    const [dashRes, statsRes] = await Promise.all([
+      Api.dashboard(),
+      Api.avgPriceByCity()
+    ])
+
+    const d = dashRes.data[0] || {}
     document.getElementById('dashboard-cards').innerHTML = `
       <div class="card">
         <div class="card-val">${d.users ?? 0}</div>
@@ -102,6 +108,9 @@ async function initDashboard() {
         <div class="card-label">&Oslash; Buchungspreis</div>
       </div>
     `
+
+    // Aggregationsergebnis als Tabelle (Anforderung: Kennzahl mit Filter)
+    renderTable(statsRes.data, document.getElementById('dashboard-stats'))
   } catch (e) {
     toast('Dashboard konnte nicht geladen werden: ' + e.message, 'error')
   }

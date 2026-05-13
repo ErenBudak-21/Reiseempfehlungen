@@ -117,16 +117,27 @@ app.delete('/api/users/:id', async (req, res) => {
 
 app.get('/api/properties', async (req, res) => {
   const { category, city, minRating } = req.query
-  let query = `
-    MATCH (p:Property)-[:LOCATED_IN]->(city:City)-[:IN_COUNTRY]->(country:Country)
-    OPTIONAL MATCH (p)-[:OF_CATEGORY]->(cat:Category)
-    WHERE 1=1
-  `
   const params = {}
-  if (category) { query += ` AND cat.name = $category`; params.category = category }
-  if (city)     { query += ` AND city.name = $city`; params.city = city }
-  if (minRating){ query += ` AND p.rating >= $minRating`; params.minRating = parseFloat(minRating) }
-  query += `
+
+  // Stadt- und Rating-Filter direkt im MATCH (gebundene Variablen → sicheres Filtern)
+  const mainConds = []
+  if (city)      { mainConds.push('city.name = $city');       params.city      = city }
+  if (minRating) { mainConds.push('p.rating >= $minRating'); params.minRating = parseFloat(minRating) }
+  const mainWhere = mainConds.length ? 'WHERE ' + mainConds.join(' AND ') : ''
+
+  // Kategorie: MATCH (= strict, nur passende) vs. OPTIONAL MATCH (alle inkl. ohne Kategorie)
+  let catClause
+  if (category) {
+    catClause = 'MATCH (p)-[:OF_CATEGORY]->(cat:Category) WHERE cat.name = $category'
+    params.category = category
+  } else {
+    catClause = 'OPTIONAL MATCH (p)-[:OF_CATEGORY]->(cat:Category)'
+  }
+
+  const query = `
+    MATCH (p:Property)-[:LOCATED_IN]->(city:City)-[:IN_COUNTRY]->(country:Country)
+    ${mainWhere}
+    ${catClause}
     RETURN p.id AS id, p.name AS name, p.type AS type,
            p.pricePerNight AS preis, p.rating AS rating,
            city.name AS stadt, country.name AS land, cat.name AS kategorie
@@ -264,16 +275,16 @@ app.get('/api/recommendations/:userId', async (req, res) => {
       MATCH (andere)-[:MADE]->(:Booking)-[:FOR]->(empfehlung:Property)
             -[:OF_CATEGORY]->(cat:Category)
       WHERE NOT (ich)-[:MADE]->(:Booking)-[:FOR]->(empfehlung)
+      WITH ich, empfehlung, cat, count(DISTINCT andere) AS aehnliche_nutzer
       OPTIONAL MATCH (ich)-[pref:PREFERS]->(cat)
-      WITH empfehlung, cat,
-           count(DISTINCT andere) AS aehnliche_nutzer,
-           CASE WHEN pref IS NOT NULL THEN 2 ELSE 1 END AS kategorie_boost
+      WITH empfehlung, cat, aehnliche_nutzer,
+           CASE WHEN pref IS NOT NULL THEN 3 ELSE 1 END AS kategorie_boost
       RETURN empfehlung.name AS property,
              empfehlung.type AS typ,
              cat.name AS kategorie,
              empfehlung.rating AS rating,
              aehnliche_nutzer * kategorie_boost AS score
-      ORDER BY score DESC
+      ORDER BY score DESC, empfehlung.rating DESC
       LIMIT 5
     `, { userId: req.params.userId })
     res.json(result)
@@ -305,7 +316,7 @@ app.post('/api/properties', async (req, res) => {
   const { id, name, type, pricePerNight, rating, cityName, categoryName } = req.body
   try {
     const result = await runQuery(`
-      MATCH (city:City {name: $cityName})
+      MERGE (city:City {name: $cityName})
       CREATE (p:Property {
         id: $id, name: $name, type: $type,
         pricePerNight: toFloat($pricePerNight),
@@ -313,7 +324,7 @@ app.post('/api/properties', async (req, res) => {
       })-[:LOCATED_IN]->(city)
       WITH p
       OPTIONAL MATCH (cat:Category {name: $categoryName})
-      FOREACH (c IN CASE WHEN cat IS NOT NULL THEN [c] ELSE [] END |
+      FOREACH (c IN CASE WHEN cat IS NOT NULL THEN [cat] ELSE [] END |
         CREATE (p)-[:OF_CATEGORY]->(c)
       )
       RETURN p.id AS id, p.name AS name

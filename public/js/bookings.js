@@ -57,7 +57,6 @@ function getBookingsTemplate() {
 
 // ── Logik ────────────────────────────────────────────────────
 
-let _bookingPropertiesCache = []
 let _bookingsCache = []
 
 async function initBookings() {
@@ -83,10 +82,9 @@ async function populateBookingProperties() {
   const sel = document.getElementById('booking-property')
   try {
     const result = await Api.getProperties({})
-    _bookingPropertiesCache = result.data
     const items = result.data.map(p => ({
       id:    p.id,
-      label: `${p.name} (${p.stadt ?? '?'}) – ${p.preis ?? '?'} €/Nacht`
+      label: `${p.name} (${p.stadt ?? '?'})`
     }))
     fillSelect(sel, items, 'id', 'label', '– Unterkunft wählen –')
   } catch (e) {
@@ -114,13 +112,6 @@ async function loadBookings() {
 }
 
 function setupBookingForm() {
-  document.getElementById('booking-property').onchange = function () {
-    const prop = _bookingPropertiesCache.find(p => p.id === this.value)
-    if (prop && prop.preis) {
-      document.getElementById('booking-price').value = prop.preis
-    }
-  }
-
   document.getElementById('booking-form').onsubmit = async (e) => {
     e.preventDefault()
     const userId     = document.getElementById('booking-user').value

@@ -59,12 +59,19 @@ DETACH DELETE u, b
 
 ### Unterkünfte lesen (mit optionalen Filtern)
 ```cypher
+-- Ohne Filter (alle Unterkünfte):
 MATCH (p:Property)-[:LOCATED_IN]->(city:City)-[:IN_COUNTRY]->(country:Country)
 OPTIONAL MATCH (p)-[:OF_CATEGORY]->(cat:Category)
-WHERE 1=1
-  [AND cat.name = $category]
-  [AND city.name = $city]
-  [AND p.rating >= $minRating]
+RETURN p.id AS id, p.name AS name, p.type AS type,
+       p.pricePerNight AS preis, p.rating AS rating,
+       city.name AS stadt, country.name AS land, cat.name AS kategorie
+ORDER BY toInteger(substring(p.id, 1)) ASC
+
+-- Mit Filtern (dynamisch kombiniert, z.B. Kategorie + Stadt + Rating):
+MATCH (p:Property)-[:LOCATED_IN]->(city:City)-[:IN_COUNTRY]->(country:Country)
+WHERE city.name = $city AND p.rating >= $minRating
+MATCH (p)-[:OF_CATEGORY]->(cat:Category)
+WHERE cat.name = $category
 RETURN p.id AS id, p.name AS name, p.type AS type,
        p.pricePerNight AS preis, p.rating AS rating,
        city.name AS stadt, country.name AS land, cat.name AS kategorie
@@ -73,7 +80,7 @@ ORDER BY toInteger(substring(p.id, 1)) ASC
 
 ### Unterkunft erstellen (mit Verknüpfungen zu City und Category)
 ```cypher
-MATCH (city:City {name: $cityName})
+MERGE (city:City {name: $cityName})
 CREATE (p:Property {
   id: $id, name: $name, type: $type,
   pricePerNight: toFloat($pricePerNight),
@@ -81,7 +88,7 @@ CREATE (p:Property {
 })-[:LOCATED_IN]->(city)
 WITH p
 OPTIONAL MATCH (cat:Category {name: $categoryName})
-FOREACH (c IN CASE WHEN cat IS NOT NULL THEN [c] ELSE [] END |
+FOREACH (c IN CASE WHEN cat IS NOT NULL THEN [cat] ELSE [] END |
   CREATE (p)-[:OF_CATEGORY]->(c)
 )
 RETURN p.id AS id, p.name AS name
@@ -192,16 +199,16 @@ WHERE andere <> ich
 MATCH (andere)-[:MADE]->(:Booking)-[:FOR]->(empfehlung:Property)
       -[:OF_CATEGORY]->(cat:Category)
 WHERE NOT (ich)-[:MADE]->(:Booking)-[:FOR]->(empfehlung)
+WITH ich, empfehlung, cat, count(DISTINCT andere) AS aehnliche_nutzer
 OPTIONAL MATCH (ich)-[pref:PREFERS]->(cat)
-WITH empfehlung, cat,
-     count(DISTINCT andere) AS aehnliche_nutzer,
-     CASE WHEN pref IS NOT NULL THEN 2 ELSE 1 END AS kategorie_boost
+WITH empfehlung, cat, aehnliche_nutzer,
+     CASE WHEN pref IS NOT NULL THEN 3 ELSE 1 END AS kategorie_boost
 RETURN empfehlung.name AS property,
        empfehlung.type AS typ,
        cat.name AS kategorie,
        empfehlung.rating AS rating,
        aehnliche_nutzer * kategorie_boost AS score
-ORDER BY score DESC
+ORDER BY score DESC, empfehlung.rating DESC
 LIMIT 5
 ```
 
