@@ -53,4 +53,5 @@ const Api = {
   // Hilfsdaten für Dropdowns
   getCategories:      ()           => apiFetch('GET',    '/categories'),
   getCities:          ()           => apiFetch('GET',    '/cities'),
+  getCountries:       ()           => apiFetch('GET',    '/countries'),
 }

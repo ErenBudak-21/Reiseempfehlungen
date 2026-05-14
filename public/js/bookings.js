@@ -6,6 +6,20 @@ function getBookingsTemplate() {
       <h1>Buchungen</h1>
 
       <div class="panel">
+        <h2>Filter / Suche</h2>
+        <div class="filter-row">
+          <select id="booking-filter-user">
+            <option value="">Alle Nutzer</option>
+          </select>
+          <select id="booking-filter-property">
+            <option value="">Alle Unterk&uuml;nfte</option>
+          </select>
+          <button class="btn btn-primary" onclick="searchBookings()">Suchen</button>
+          <button class="btn btn-secondary" onclick="clearBookingFilter()">Zur&uuml;cksetzen</button>
+        </div>
+      </div>
+
+      <div class="panel">
         <h2>Buchung erfassen</h2>
         <form id="booking-form" class="form-grid">
           <input type="hidden" id="booking-id">
@@ -31,11 +45,7 @@ function getBookingsTemplate() {
           </div>
           <div class="form-row">
             <label for="booking-price">Preis (&euro;)</label>
-            <input type="number" id="booking-price" placeholder="350" step="0.01" min="0">
-          </div>
-          <div class="form-row">
-            <label for="booking-guests">G&auml;ste</label>
-            <input type="number" id="booking-guests" placeholder="2" min="1">
+            <input type="number" id="booking-price" placeholder="350" step="10" min="0">
           </div>
           <div class="form-actions">
             <button type="submit" class="btn btn-primary">Buchung anlegen</button>
@@ -92,42 +102,69 @@ async function populateBookingProperties() {
   }
 }
 
+function bookingActions(row) {
+  return `
+    <button class="btn btn-xs btn-delete"
+      onclick="confirmDeleteBooking('${escHtml(row.id)}')">L&ouml;schen</button>
+  `
+}
+
 async function loadBookings() {
   try {
     const result = await Api.getBookings()
     _bookingsCache = result.data
-    document.getElementById('booking-id').value = nextId('B', _bookingsCache)
-    showResult(
-      result,
-      document.getElementById('bookings-query'),
-      document.getElementById('bookings-table'),
-      row => `
-        <button class="btn btn-xs btn-delete"
-          onclick="confirmDeleteBooking('${escHtml(row.id)}')">L&ouml;schen</button>
-      `
-    )
+    // Filter-Dropdowns mit vorhandenen Werten befüllen
+    const users = [...new Set(_bookingsCache.map(b => b.user))].sort()
+    const props = [...new Set(_bookingsCache.map(b => b.property))].sort()
+    fillSelect(document.getElementById('booking-filter-user'),     users.map(u => ({v: u})), 'v', 'v', 'Alle Nutzer')
+    fillSelect(document.getElementById('booking-filter-property'), props.map(p => ({v: p})), 'v', 'v', 'Alle Unterkünfte')
+
+    renderTable(_bookingsCache, document.getElementById('bookings-table'), bookingActions)
   } catch (e) {
     toast('Buchungen konnten nicht geladen werden: ' + e.message, 'error')
   }
 }
 
+function searchBookings() {
+  const user = document.getElementById('booking-filter-user').value
+  const prop = document.getElementById('booking-filter-property').value
+
+  const filtered = _bookingsCache.filter(b => {
+    const matchUser = !user || b.user     === user
+    const matchProp = !prop || b.property === prop
+    return matchUser && matchProp
+  })
+  renderTable(filtered, document.getElementById('bookings-table'), bookingActions)
+}
+
+function clearBookingFilter() {
+  document.getElementById('booking-filter-user').value     = ''
+  document.getElementById('booking-filter-property').value = ''
+  renderTable(_bookingsCache, document.getElementById('bookings-table'), bookingActions)
+}
+
 function setupBookingForm() {
   document.getElementById('booking-form').onsubmit = async (e) => {
     e.preventDefault()
+
     const userId     = document.getElementById('booking-user').value
     const propertyId = document.getElementById('booking-property').value
-    if (!userId)     { toast('Bitte einen Nutzer wählen', 'error');     return }
-    if (!propertyId) { toast('Bitte eine Unterkunft wählen', 'error'); return }
+    const checkIn    = document.getElementById('booking-checkin').value
+    const checkOut   = document.getElementById('booking-checkout').value
+    const price      = document.getElementById('booking-price').value
 
-    const data = {
-      id:        document.getElementById('booking-id').value || nextId('B', _bookingsCache),
-      userId,
-      propertyId,
-      checkIn:   document.getElementById('booking-checkin').value,
-      checkOut:  document.getElementById('booking-checkout').value,
-      price:     document.getElementById('booking-price').value,
-      numGuests: document.getElementById('booking-guests').value,
+    const fehlend = []
+    if (!userId)     fehlend.push('Nutzer')
+    if (!propertyId) fehlend.push('Unterkunft')
+    if (!checkIn)    fehlend.push('Check-In Datum')
+    if (!checkOut)   fehlend.push('Check-Out Datum')
+    if (!price)      fehlend.push('Preis')
+    if (fehlend.length) {
+      toast('Bitte trage noch ein: ' + fehlend.join(', '), 'error')
+      return
     }
+
+    const data = { userId, propertyId, checkIn, checkOut, price }
     try {
       await Api.createBooking(data)
       toast('Buchung erfolgreich angelegt')

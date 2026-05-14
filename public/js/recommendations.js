@@ -14,7 +14,6 @@ function getRecommendationsTemplate() {
       </div>
 
       <div class="panel">
-        <div id="rec-query" class="query-area"></div>
         <div id="rec-results"></div>
       </div>
     </section>
@@ -39,8 +38,38 @@ async function loadRecommendations() {
 
   try {
     const result = await Api.recommendations(userId)
-    showResult(result, document.getElementById('rec-query'), document.getElementById('rec-results'))
+    renderRecommendations(result.data, document.getElementById('rec-results'))
   } catch (e) {
     toast('Fehler bei Empfehlungen: ' + e.message, 'error')
   }
+}
+
+function renderRecommendations(data, container) {
+  if (!data || data.length === 0) {
+    container.innerHTML = '<p class="empty-msg">Keine Empfehlungen gefunden.</p>'
+    return
+  }
+
+  let html = '<div class="table-wrap"><table><thead><tr>'
+  html += '<th>Unterkunft</th><th>Typ</th><th>Kategorie</th>'
+  html += '<th>Rating</th><th>Score</th><th>Basierend auf</th>'
+  html += '</tr></thead><tbody>'
+
+  data.forEach(row => {
+    const nutzer = Array.isArray(row.basierend_auf)
+      ? row.basierend_auf.join(', ')
+      : (row.basierend_auf ?? '–')
+
+    html += `<tr>
+      <td>${escHtml(row.property)}</td>
+      <td>${escHtml(row.typ)}</td>
+      <td>${escHtml(row.kategorie)}</td>
+      <td>${escHtml(row.rating)}</td>
+      <td>${escHtml(row.score)}</td>
+      <td style="color:var(--text-muted);font-size:0.85rem">${escHtml(nutzer)} hat diese Unterkunft ebenfalls gebucht</td>
+    </tr>`
+  })
+
+  html += '</tbody></table></div>'
+  container.innerHTML = html
 }

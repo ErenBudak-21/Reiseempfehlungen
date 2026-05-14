@@ -13,8 +13,23 @@ function renderQueryBox(_result, container) {
   if (container) container.innerHTML = ''
 }
 
+const _headerLabels = {
+  'id': 'ID', 'name': 'Name', 'email': 'E-Mail',
+  'präferenz': 'Präferenz', 'user': 'Nutzer', 'property': 'Unterkunft',
+  'checkIn': 'Check-In', 'checkOut': 'Check-Out', 'preis': 'Preis (€)',
+  'stadt': 'Stadt', 'land': 'Land', 'kategorie': 'Kategorie',
+  'rating': 'Rating', 'typ': 'Typ', 'type': 'Typ', 'score': 'Score',
+  'buchungen': 'Buchungen', 'anzahl_buchungen': 'Buchungen',
+  'durchschnittspreis': 'Ø Preis (€)', 'avg_rating': 'Ø Rating',
+  'gesamtumsatz': 'Umsatz (€)', 'basierend_auf': 'Basierend auf',
+  'datum': 'Datum', 'buchung': 'Buchung',
+}
+
+function formatHeader(key) {
+  return _headerLabels[key] || key.replace(/_/g, ' ')
+}
+
 // Rendert ein Array von Objekten als HTML-Tabelle
-// actions(row) gibt HTML-String für die Aktionen-Spalte zurück (optional)
 function renderTable(data, container, actions) {
   if (!data || data.length === 0) {
     container.innerHTML = '<p class="empty-msg">Keine Eintr&auml;ge gefunden.</p>'
@@ -23,7 +38,7 @@ function renderTable(data, container, actions) {
 
   const keys = Object.keys(data[0])
   let html = '<div class="table-wrap"><table><thead><tr>'
-  keys.forEach(k => { html += `<th>${escHtml(k)}</th>` })
+  keys.forEach(k => { html += `<th>${escHtml(formatHeader(k))}</th>` })
   if (actions) html += '<th>Aktionen</th>'
   html += '</tr></thead><tbody>'
 

@@ -38,14 +38,23 @@ function getPropertiesTemplate() {
             <input type="number" id="prop-price" placeholder="120" step="1" min="0">
           </div>
           <div class="form-row">
-            <label for="prop-rating">Rating</label>
-            <input type="number" id="prop-rating" placeholder="4" step="1" min="0" max="5">
+            <label>Rating</label>
+            <div class="star-rating" id="prop-rating-stars">
+              <span class="star" data-value="1">&#9733;</span>
+              <span class="star" data-value="2">&#9733;</span>
+              <span class="star" data-value="3">&#9733;</span>
+              <span class="star" data-value="4">&#9733;</span>
+              <span class="star" data-value="5">&#9733;</span>
+            </div>
+            <input type="hidden" id="prop-rating">
           </div>
           <div class="form-row">
             <label for="prop-city">Stadt</label>
-            <input type="text" id="prop-city" list="city-suggestions"
-              placeholder="Stadt eingeben oder w&auml;hlen" autocomplete="off">
-            <datalist id="city-suggestions"></datalist>
+            <input type="text" id="prop-city" placeholder="z.B. Milano" autocomplete="off">
+          </div>
+          <div class="form-row">
+            <label for="prop-country">Land</label>
+            <input type="text" id="prop-country" placeholder="z.B. Italien" autocomplete="off">
           </div>
           <div class="form-row">
             <label for="prop-category">Kategorie</label>
@@ -76,22 +85,35 @@ function getPropertiesTemplate() {
 let _propertiesCache = []
 
 async function initProperties() {
-  // Filter-Dropdowns mit vorhandenen Werten befüllen
   fillSelect(document.getElementById('prop-filter-category'), _categories, 'name', 'name', 'Alle Kategorien')
   fillSelect(document.getElementById('prop-filter-city'),     _cities,     'name', 'name', 'Alle Städte')
-
-  // Datalist für Stadtvorschläge befüllen (Freitext + Vorschläge)
-  const cityList = document.getElementById('city-suggestions')
-  cityList.innerHTML = ''
-  _cities.forEach(c => {
-    const opt = document.createElement('option')
-    opt.value = c.name
-    cityList.appendChild(opt)
-  })
-
-  fillSelect(document.getElementById('prop-category'), _categories, 'name', 'name', '– Kategorie wählen –')
+  fillSelect(document.getElementById('prop-category'),        _categories, 'name', 'name', '– Kategorie wählen –')
+  initStarRating()
   setupPropertyForm()
   await searchProperties()
+}
+
+function initStarRating() {
+  const container = document.getElementById('prop-rating-stars')
+  const input     = document.getElementById('prop-rating')
+  container.querySelectorAll('.star').forEach(star => {
+    star.addEventListener('click', () => {
+      input.value = star.dataset.value
+      highlightStars(parseInt(star.dataset.value))
+    })
+    star.addEventListener('mouseenter', () => {
+      highlightStars(parseInt(star.dataset.value))
+    })
+  })
+  container.addEventListener('mouseleave', () => {
+    highlightStars(parseInt(input.value) || 0)
+  })
+}
+
+function highlightStars(count) {
+  document.querySelectorAll('#prop-rating-stars .star').forEach(s => {
+    s.classList.toggle('active', parseInt(s.dataset.value) <= count)
+  })
 }
 
 async function searchProperties() {
@@ -134,22 +156,37 @@ function setupPropertyForm() {
     e.preventDefault()
     const editId = document.getElementById('prop-edit-id').value
     const data = {
-      id:            editId || nextId('P', _propertiesCache),
+      ...(editId ? { id: editId } : {}),
       name:          document.getElementById('prop-name').value.trim(),
       type:          document.getElementById('prop-type').value.trim(),
       pricePerNight: document.getElementById('prop-price').value,
       rating:        document.getElementById('prop-rating').value,
-      cityName:      document.getElementById('prop-city').value,
+      cityName:      document.getElementById('prop-city').value.trim(),
+      countryName:   document.getElementById('prop-country').value.trim(),
       categoryName:  document.getElementById('prop-category').value,
     }
+    const fehlend = []
+    if (!data.name)        fehlend.push('Name')
+    if (!data.type)        fehlend.push('Typ')
+    if (!data.pricePerNight) fehlend.push('Preis / Nacht')
+    if (!data.rating)      fehlend.push('Rating')
+    if (!data.cityName)    fehlend.push('Stadt')
+    if (!data.countryName) fehlend.push('Land')
+    if (fehlend.length) {
+      toast('Bitte trage noch ein: ' + fehlend.join(', '), 'error')
+      return
+    }
+
     try {
       if (editId) {
         await Api.updateProperty(editId, data)
         toast('Unterkunft erfolgreich aktualisiert')
       } else {
-        if (!data.cityName) { toast('Bitte eine Stadt wählen', 'error'); return }
         await Api.createProperty(data)
         toast('Unterkunft erfolgreich angelegt')
+        // Neue Stadt in DB → Filter-Dropdown aktualisieren
+        await loadSharedData()
+        fillSelect(document.getElementById('prop-filter-city'), _cities, 'name', 'name', 'Alle Städte')
       }
       resetPropertyForm()
       await searchProperties()
@@ -168,7 +205,9 @@ function editProperty(id) {
   document.getElementById('prop-type').value       = prop.type      ?? ''
   document.getElementById('prop-price').value      = prop.preis     ?? ''
   document.getElementById('prop-rating').value     = prop.rating    ?? ''
+  highlightStars(parseInt(prop.rating) || 0)
   document.getElementById('prop-city').value       = prop.stadt     ?? ''
+  document.getElementById('prop-country').value    = prop.land      ?? ''
   document.getElementById('prop-category').value   = prop.kategorie ?? ''
   document.getElementById('prop-submit-btn').textContent     = 'Speichern'
   document.getElementById('prop-cancel-btn').style.display   = 'inline-flex'
@@ -189,6 +228,8 @@ async function confirmDeleteProperty(id, name) {
 function resetPropertyForm() {
   document.getElementById('property-form').reset()
   document.getElementById('prop-edit-id').value            = ''
+  document.getElementById('prop-rating').value             = ''
   document.getElementById('prop-submit-btn').textContent   = 'Erstellen'
   document.getElementById('prop-cancel-btn').style.display = 'none'
+  highlightStars(0)
 }

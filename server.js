@@ -61,8 +61,8 @@ app.get('/api/users', async (req, res) => {
     const result = await runQuery(`
       MATCH (u:User)
       OPTIONAL MATCH (u)-[:PREFERS]->(c:Category)
-      RETURN u.id AS id, u.name AS name, u.email AS email, u.age AS age,
-             c.name AS praeferenz
+      RETURN u.id AS id, u.name AS name, u.email AS email,
+             c.name AS präferenz
       ORDER BY toInteger(substring(u.id, 1)) ASC
     `)
     res.json(result)
@@ -71,30 +71,43 @@ app.get('/api/users', async (req, res) => {
 
 // User erstellen (mit Kategorie-Präferenz als Verknüpfung!)
 app.post('/api/users', async (req, res) => {
-  const { id, name, email, age, praeferenz } = req.body
+  const { name, email, praeferenz } = req.body
   try {
     const result = await runQuery(`
-      CREATE (u:User {id: $id, name: $name, email: $email, age: toInteger($age)})
+      OPTIONAL MATCH (existing:User)
+      WITH coalesce(max(toInteger(substring(existing.id, 1))), 0) + 1 AS nextNum
+      CREATE (u:User {
+        id: CASE WHEN nextNum < 10 THEN 'U0' + toString(nextNum) ELSE 'U' + toString(nextNum) END,
+        name: $name, email: $email
+      })
       WITH u
       OPTIONAL MATCH (c:Category {name: $praeferenz})
       FOREACH (cat IN CASE WHEN c IS NOT NULL THEN [c] ELSE [] END |
         CREATE (u)-[:PREFERS]->(cat)
       )
       RETURN u.id AS id, u.name AS name
-    `, { id, name, email, age, praeferenz })
+    `, { name, email, praeferenz })
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// User ändern
+// User ändern (inkl. Präferenz-Verknüpfung)
 app.put('/api/users/:id', async (req, res) => {
-  const { name, email, age } = req.body
+  const { name, email, praeferenz } = req.body
   try {
     const result = await runQuery(`
       MATCH (u:User {id: $id})
-      SET u.name = $name, u.email = $email, u.age = toInteger($age)
+      SET u.name = $name, u.email = $email
+      WITH u
+      OPTIONAL MATCH (u)-[r:PREFERS]->()
+      DELETE r
+      WITH u
+      OPTIONAL MATCH (c:Category {name: $praeferenz})
+      FOREACH (cat IN CASE WHEN c IS NOT NULL THEN [c] ELSE [] END |
+        CREATE (u)-[:PREFERS]->(cat)
+      )
       RETURN u.id AS id, u.name AS name
-    `, { id: req.params.id, name, email, age })
+    `, { id: req.params.id, name, email, praeferenz: praeferenz || '' })
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -135,8 +148,10 @@ app.get('/api/properties', async (req, res) => {
   }
 
   const query = `
-    MATCH (p:Property)-[:LOCATED_IN]->(city:City)-[:IN_COUNTRY]->(country:Country)
+    MATCH (p:Property)-[:LOCATED_IN]->(city:City)
     ${mainWhere}
+    OPTIONAL MATCH (city)-[:IN_COUNTRY]->(country:Country)
+    WITH p, city, collect(country)[0] AS country
     ${catClause}
     RETURN p.id AS id, p.name AS name, p.type AS type,
            p.pricePerNight AS preis, p.rating AS rating,
@@ -159,7 +174,7 @@ app.get('/api/bookings', async (req, res) => {
       MATCH (u:User)-[:MADE]->(b:Booking)-[:FOR]->(p:Property)
       RETURN b.id AS id, u.name AS user, p.name AS property,
              b.checkIn AS checkIn, b.checkOut AS checkOut,
-             b.price AS preis, b.numGuests AS gaeste
+             b.price AS preis
       ORDER BY toInteger(substring(b.id, 1)) ASC
     `)
     res.json(result)
@@ -168,20 +183,21 @@ app.get('/api/bookings', async (req, res) => {
 
 // Buchung anlegen = Verknüpfung zwischen User und Property erfassen!
 app.post('/api/bookings', async (req, res) => {
-  const { id, userId, propertyId, checkIn, checkOut, price, numGuests } = req.body
+  const { userId, propertyId, checkIn, checkOut, price } = req.body
   try {
     const result = await runQuery(`
+      OPTIONAL MATCH (existing:Booking)
+      WITH coalesce(max(toInteger(substring(existing.id, 1))), 0) + 1 AS nextNum
       MATCH (u:User {id: $userId})
       MATCH (p:Property {id: $propertyId})
       CREATE (u)-[:MADE]->(b:Booking {
-        id: $id,
+        id: CASE WHEN nextNum < 10 THEN 'B0' + toString(nextNum) ELSE 'B' + toString(nextNum) END,
         checkIn: date($checkIn),
         checkOut: date($checkOut),
-        price: toFloat($price),
-        numGuests: toInteger($numGuests)
+        price: toFloat($price)
       })-[:FOR]->(p)
       RETURN b.id AS id, u.name AS user, p.name AS property
-    `, { id, userId, propertyId, checkIn, checkOut, price, numGuests })
+    `, { userId, propertyId, checkIn, checkOut, price })
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -237,7 +253,7 @@ app.get('/api/stats/avg-price-by-city', async (req, res) => {
   try {
     const result = await runQuery(`
       MATCH (b:Booking)-[:FOR]->(p:Property)-[:LOCATED_IN]->(city:City)
-      WHERE p.rating >= 4.0
+      WHERE p.rating >= 4
       RETURN city.name AS stadt,
              count(b) AS anzahl_buchungen,
              round(avg(b.price) * 100) / 100 AS durchschnittspreis,
@@ -275,15 +291,18 @@ app.get('/api/recommendations/:userId', async (req, res) => {
       MATCH (andere)-[:MADE]->(:Booking)-[:FOR]->(empfehlung:Property)
             -[:OF_CATEGORY]->(cat:Category)
       WHERE NOT (ich)-[:MADE]->(:Booking)-[:FOR]->(empfehlung)
-      WITH ich, empfehlung, cat, count(DISTINCT andere) AS aehnliche_nutzer
+      WITH ich, empfehlung, cat,
+           count(DISTINCT andere) AS aehnliche_nutzer,
+           collect(DISTINCT andere.name) AS basierend_auf
       OPTIONAL MATCH (ich)-[pref:PREFERS]->(cat)
-      WITH empfehlung, cat, aehnliche_nutzer,
+      WITH empfehlung, cat, aehnliche_nutzer, basierend_auf,
            CASE WHEN pref IS NOT NULL THEN 3 ELSE 1 END AS kategorie_boost
       RETURN empfehlung.name AS property,
              empfehlung.type AS typ,
              cat.name AS kategorie,
              empfehlung.rating AS rating,
-             aehnliche_nutzer * kategorie_boost AS score
+             aehnliche_nutzer * kategorie_boost AS score,
+             basierend_auf
       ORDER BY score DESC, empfehlung.rating DESC
       LIMIT 5
     `, { userId: req.params.userId })
@@ -311,16 +330,23 @@ app.get('/api/dashboard', async (req, res) => {
 // PROPERTIES - CRUD (Erfassen, Ändern, Löschen)
 // =============================================================
 
-// Property erstellen (mit City- und Category-Verknüpfung)
+// Property erstellen (mit City-, Country- und Category-Verknüpfung)
 app.post('/api/properties', async (req, res) => {
-  const { id, name, type, pricePerNight, rating, cityName, categoryName } = req.body
+  const { name, type, pricePerNight, rating, cityName, countryName, categoryName } = req.body
   try {
     const result = await runQuery(`
+      OPTIONAL MATCH (existing:Property)
+      WITH coalesce(max(toInteger(substring(existing.id, 1))), 0) + 1 AS nextNum
       MERGE (city:City {name: $cityName})
+      FOREACH (ignored IN CASE WHEN $countryName <> '' THEN [1] ELSE [] END |
+        MERGE (country:Country {name: $countryName})
+        MERGE (city)-[:IN_COUNTRY]->(country)
+      )
       CREATE (p:Property {
-        id: $id, name: $name, type: $type,
+        id: CASE WHEN nextNum < 10 THEN 'P0' + toString(nextNum) ELSE 'P' + toString(nextNum) END,
+        name: $name, type: $type,
         pricePerNight: toFloat($pricePerNight),
-        rating: toFloat($rating)
+        rating: toInteger($rating)
       })-[:LOCATED_IN]->(city)
       WITH p
       OPTIONAL MATCH (cat:Category {name: $categoryName})
@@ -328,22 +354,36 @@ app.post('/api/properties', async (req, res) => {
         CREATE (p)-[:OF_CATEGORY]->(c)
       )
       RETURN p.id AS id, p.name AS name
-    `, { id, name, type, pricePerNight, rating, cityName, categoryName })
+    `, { name, type, pricePerNight, rating, cityName, countryName: countryName || '', categoryName })
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// Property ändern
+// Property ändern (inkl. Stadt- und Land-Verknüpfung)
 app.put('/api/properties/:id', async (req, res) => {
-  const { name, type, pricePerNight, rating } = req.body
+  const { name, type, pricePerNight, rating, cityName, countryName } = req.body
   try {
     const result = await runQuery(`
       MATCH (p:Property {id: $id})
       SET p.name = $name, p.type = $type,
           p.pricePerNight = toFloat($pricePerNight),
-          p.rating = toFloat($rating)
+          p.rating = toInteger($rating)
+      WITH p
+      OPTIONAL MATCH (p)-[r:LOCATED_IN]->()
+      DELETE r
+      WITH p
+      MERGE (city:City {name: $cityName})
+      WITH p, city
+      OPTIONAL MATCH (city)-[oldRel:IN_COUNTRY]->()
+      DELETE oldRel
+      WITH p, city
+      FOREACH (ignored IN CASE WHEN $countryName <> '' THEN [1] ELSE [] END |
+        MERGE (country:Country {name: $countryName})
+        MERGE (city)-[:IN_COUNTRY]->(country)
+      )
+      CREATE (p)-[:LOCATED_IN]->(city)
       RETURN p.id AS id, p.name AS name
-    `, { id: req.params.id, name, type, pricePerNight, rating })
+    `, { id: req.params.id, name, type, pricePerNight, rating, cityName, countryName: countryName || '' })
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -373,6 +413,45 @@ app.get('/api/cities', async (req, res) => {
   try {
     const result = await runQuery(`MATCH (c:City) RETURN c.name AS name ORDER BY c.name`)
     res.json(result)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/countries', async (req, res) => {
+  try {
+    const result = await runQuery(`MATCH (c:Country) RETURN c.name AS name ORDER BY c.name`)
+    res.json(result)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+
+// Verwaiste Booking-Nodes löschen (kein User oder kein Property verknüpft)
+app.delete('/api/admin/orphan-bookings', async (req, res) => {
+  try {
+    const result = await runQuery(`
+      MATCH (b:Booking)
+      WHERE NOT (:User)-[:MADE]->(b) OR NOT (b)-[:FOR]->(:Property)
+      DETACH DELETE b
+      RETURN count(*) AS deleted
+    `)
+    res.json({ ok: true, data: result.data })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Einmaliger Fix: Oesterreich / Öesterreich → Österreich umbenennen + Duplikate bereinigen
+app.post('/api/admin/fix-austria', async (req, res) => {
+  try {
+    await runQuery(`
+      MATCH (c:Country) WHERE c.name IN ['Oesterreich', 'Öesterreich', 'Oesterreich ']
+      SET c.name = 'Österreich'
+    `)
+    await runQuery(`
+      MATCH (city:City)-[r:IN_COUNTRY]->(c:Country {name: 'Österreich'})
+      WITH city, collect(r) AS rels
+      WHERE size(rels) > 1
+      UNWIND tail(rels) AS dupRel
+      DELETE dupRel
+    `)
+    res.json({ ok: true, message: 'Österreich-Bereinigung abgeschlossen' })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

@@ -79,6 +79,26 @@
   border-color: var(--primary);
 }
 
+/* Sterne-Bewertung */
+.star-rating {
+  display: flex;
+  gap: 0.2rem;
+  cursor: pointer;
+  padding: 0.3rem 0;
+}
+
+.star-rating .star {
+  font-size: 1.6rem;
+  color: #d1d5db;
+  transition: color 0.1s;
+  user-select: none;
+  line-height: 1;
+}
+
+.star-rating .star.active {
+  color: #f59e0b;
+}
+
 /* Buttons */
 .btn {
   display: inline-flex;

@@ -24,7 +24,7 @@ RETURN users, properties, bookings, avg_preis
 MATCH (u:User)
 OPTIONAL MATCH (u)-[:PREFERS]->(c:Category)
 RETURN u.id AS id, u.name AS name, u.email AS email, u.age AS age,
-       c.name AS praeferenz
+       c.name AS präferenz
 ORDER BY toInteger(substring(u.id, 1)) ASC
 ```
 
@@ -94,12 +94,21 @@ FOREACH (c IN CASE WHEN cat IS NOT NULL THEN [cat] ELSE [] END |
 RETURN p.id AS id, p.name AS name
 ```
 
-### Unterkunft ändern
+### Unterkunft ändern (inkl. Stadt- und Land-Verknüpfung)
 ```cypher
 MATCH (p:Property {id: $id})
 SET p.name = $name, p.type = $type,
     p.pricePerNight = toFloat($pricePerNight),
     p.rating = toFloat($rating)
+WITH p
+OPTIONAL MATCH (p)-[r:LOCATED_IN]->()
+DELETE r
+MERGE (city:City {name: $cityName})
+FOREACH (ignored IN CASE WHEN $countryName <> '' THEN [1] ELSE [] END |
+  MERGE (country:Country {name: $countryName})
+  MERGE (city)-[:IN_COUNTRY]->(country)
+)
+CREATE (p)-[:LOCATED_IN]->(city)
 RETURN p.id AS id, p.name AS name
 ```
 
@@ -118,7 +127,7 @@ DETACH DELETE p
 MATCH (u:User)-[:MADE]->(b:Booking)-[:FOR]->(p:Property)
 RETURN b.id AS id, u.name AS user, p.name AS property,
        b.checkIn AS checkIn, b.checkOut AS checkOut,
-       b.price AS preis, b.numGuests AS gaeste
+       b.price AS preis, b.numGuests AS gäste
 ORDER BY toInteger(substring(b.id, 1)) ASC
 ```
 
@@ -199,15 +208,18 @@ WHERE andere <> ich
 MATCH (andere)-[:MADE]->(:Booking)-[:FOR]->(empfehlung:Property)
       -[:OF_CATEGORY]->(cat:Category)
 WHERE NOT (ich)-[:MADE]->(:Booking)-[:FOR]->(empfehlung)
-WITH ich, empfehlung, cat, count(DISTINCT andere) AS aehnliche_nutzer
+WITH ich, empfehlung, cat,
+     count(DISTINCT andere) AS aehnliche_nutzer,
+     collect(DISTINCT andere.name) AS basierend_auf
 OPTIONAL MATCH (ich)-[pref:PREFERS]->(cat)
-WITH empfehlung, cat, aehnliche_nutzer,
+WITH empfehlung, cat, aehnliche_nutzer, basierend_auf,
      CASE WHEN pref IS NOT NULL THEN 3 ELSE 1 END AS kategorie_boost
 RETURN empfehlung.name AS property,
        empfehlung.type AS typ,
        cat.name AS kategorie,
        empfehlung.rating AS rating,
-       aehnliche_nutzer * kategorie_boost AS score
+       aehnliche_nutzer * kategorie_boost AS score,
+       basierend_auf
 ORDER BY score DESC, empfehlung.rating DESC
 LIMIT 5
 ```

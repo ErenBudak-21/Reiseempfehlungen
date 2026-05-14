@@ -6,6 +6,18 @@ function getUsersTemplate() {
       <h1>Nutzer</h1>
 
       <div class="panel">
+        <h2>Suche</h2>
+        <div class="filter-row">
+          <input type="text" id="user-filter-q" placeholder="Name oder E-Mail">
+          <select id="user-filter-praeferenz">
+            <option value="">Alle Pr&auml;ferenzen</option>
+          </select>
+          <button class="btn btn-primary" onclick="searchUsers()">Suchen</button>
+          <button class="btn btn-secondary" onclick="clearUserFilter()">Zur&uuml;cksetzen</button>
+        </div>
+      </div>
+
+      <div class="panel">
         <h2>Nutzer anlegen / bearbeiten</h2>
         <form id="user-form" class="form-grid">
           <input type="hidden" id="user-edit-id">
@@ -16,10 +28,6 @@ function getUsersTemplate() {
           <div class="form-row">
             <label for="user-email">E-Mail</label>
             <input type="email" id="user-email" placeholder="email@example.com">
-          </div>
-          <div class="form-row">
-            <label for="user-age">Alter</label>
-            <input type="number" id="user-age" placeholder="25" min="1" max="120">
           </div>
           <div class="form-row">
             <label for="user-praeferenz">Pr&auml;ferenz</label>
@@ -51,32 +59,48 @@ function getUsersTemplate() {
 let _usersCache = []
 
 async function initUsers() {
-  fillSelect(
-    document.getElementById('user-praeferenz'),
-    _categories, 'name', 'name', '– keine –'
-  )
+  fillSelect(document.getElementById('user-praeferenz'),        _categories, 'name', 'name', '– keine –')
+  fillSelect(document.getElementById('user-filter-praeferenz'), _categories, 'name', 'name', 'Alle Präferenzen')
   setupUserForm()
   await loadUsers()
+}
+
+function userActions(row) {
+  return `
+    <button class="btn btn-xs btn-edit"
+      onclick="editUser('${escHtml(row.id)}')">Bearbeiten</button>
+    <button class="btn btn-xs btn-delete"
+      onclick="confirmDeleteUser('${escHtml(row.id)}', '${escHtml(row.name)}')">L&ouml;schen</button>
+  `
 }
 
 async function loadUsers() {
   try {
     const result = await Api.getUsers()
     _usersCache = result.data
-    showResult(
-      result,
-      document.getElementById('users-query'),
-      document.getElementById('users-table'),
-      row => `
-        <button class="btn btn-xs btn-edit"
-          onclick="editUser('${escHtml(row.id)}')">Bearbeiten</button>
-        <button class="btn btn-xs btn-delete"
-          onclick="confirmDeleteUser('${escHtml(row.id)}', '${escHtml(row.name)}')">L&ouml;schen</button>
-      `
-    )
+    renderTable(_usersCache, document.getElementById('users-table'), userActions)
   } catch (e) {
     toast('Nutzer konnten nicht geladen werden: ' + e.message, 'error')
   }
+}
+
+function searchUsers() {
+  const q    = document.getElementById('user-filter-q').value.toLowerCase().trim()
+  const pref = document.getElementById('user-filter-praeferenz').value
+
+  const filtered = _usersCache.filter(u => {
+    const matchQ    = !q    || (u.name  ?? '').toLowerCase().includes(q)
+                            || (u.email ?? '').toLowerCase().includes(q)
+    const matchPref = !pref || u.präferenz === pref
+    return matchQ && matchPref
+  })
+  renderTable(filtered, document.getElementById('users-table'), userActions)
+}
+
+function clearUserFilter() {
+  document.getElementById('user-filter-q').value            = ''
+  document.getElementById('user-filter-praeferenz').value   = ''
+  renderTable(_usersCache, document.getElementById('users-table'), userActions)
 }
 
 function setupUserForm() {
@@ -84,10 +108,9 @@ function setupUserForm() {
     e.preventDefault()
     const editId = document.getElementById('user-edit-id').value
     const data = {
-      id:         editId || nextId('U', _usersCache),
+      ...(editId ? { id: editId } : {}),
       name:       document.getElementById('user-name').value.trim(),
       email:      document.getElementById('user-email').value.trim(),
-      age:        document.getElementById('user-age').value,
       praeferenz: document.getElementById('user-praeferenz').value,
     }
     try {
@@ -113,8 +136,7 @@ function editUser(id) {
   document.getElementById('user-edit-id').value    = id
   document.getElementById('user-name').value       = user.name      ?? ''
   document.getElementById('user-email').value      = user.email     ?? ''
-  document.getElementById('user-age').value        = user.age       ?? ''
-  document.getElementById('user-praeferenz').value = user.praeferenz ?? ''
+  document.getElementById('user-praeferenz').value = user.präferenz ?? ''
   document.getElementById('user-submit-btn').textContent      = 'Speichern'
   document.getElementById('user-cancel-btn').style.display    = 'inline-flex'
   document.getElementById('user-form').scrollIntoView({ behavior: 'smooth', block: 'start' })

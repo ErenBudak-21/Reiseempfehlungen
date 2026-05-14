@@ -71,11 +71,17 @@ function getDashboardTemplate() {
     <section id="tab-dashboard" class="tab-section">
       <h1>Dashboard</h1>
       <div id="dashboard-cards" class="cards-row"></div>
-      <div class="panel">
-        <h2>&Oslash; Buchungspreis nach Stadt
-          <small style="font-weight:normal">&nbsp;(nur Unterk&uuml;nfte mit Rating &ge; 4)</small>
-        </h2>
-        <div id="dashboard-stats"></div>
+      <div class="grid-2">
+        <div class="panel">
+          <h2>&Oslash; Buchungspreis nach Stadt
+            <small style="font-weight:normal">&nbsp;(Rating &ge; 4)</small>
+          </h2>
+          <div id="dashboard-stats"></div>
+        </div>
+        <div class="panel">
+          <h2>Buchungen &amp; Umsatz nach Kategorie</h2>
+          <div id="dashboard-category-stats"></div>
+        </div>
       </div>
     </section>
   `
@@ -83,10 +89,10 @@ function getDashboardTemplate() {
 
 async function initDashboard() {
   try {
-    // Überblickszahlen und Aggregation parallel laden
-    const [dashRes, statsRes] = await Promise.all([
+    const [dashRes, statsRes, catRes] = await Promise.all([
       Api.dashboard(),
-      Api.avgPriceByCity()
+      Api.avgPriceByCity(),
+      Api.bookingsByCategory()
     ])
 
     const d = dashRes.data[0] || {}
@@ -109,8 +115,8 @@ async function initDashboard() {
       </div>
     `
 
-    // Aggregationsergebnis als Tabelle (Anforderung: Kennzahl mit Filter)
     renderTable(statsRes.data, document.getElementById('dashboard-stats'))
+    renderTable(catRes.data,   document.getElementById('dashboard-category-stats'))
   } catch (e) {
     toast('Dashboard konnte nicht geladen werden: ' + e.message, 'error')
   }
