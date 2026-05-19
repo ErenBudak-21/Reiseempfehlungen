@@ -113,6 +113,11 @@ function setupUserForm() {
       email:      document.getElementById('user-email').value.trim(),
       praeferenz: document.getElementById('user-praeferenz').value,
     }
+    const fehlend = [
+      [data.name,  'Name'],
+      [data.email, 'E-Mail'],
+    ].filter(([v]) => !v).map(([, l]) => l)
+    if (fehlend.length) { toast('Bitte trage noch ein: ' + fehlend.join(', '), 'error'); return }
     try {
       if (editId) {
         await Api.updateUser(editId, data)

@@ -4,36 +4,25 @@ function getBookingsTemplate() {
   return `
     <section id="tab-bookings" class="tab-section">
       <h1>Buchungen</h1>
-
       <div class="panel">
         <h2>Filter / Suche</h2>
         <div class="filter-row">
-          <select id="booking-filter-user">
-            <option value="">Alle Nutzer</option>
-          </select>
-          <select id="booking-filter-property">
-            <option value="">Alle Unterk&uuml;nfte</option>
-          </select>
+          <select id="booking-filter-user"><option value="">Alle Nutzer</option></select>
+          <select id="booking-filter-property"><option value="">Alle Unterk&uuml;nfte</option></select>
           <button class="btn btn-primary" onclick="searchBookings()">Suchen</button>
           <button class="btn btn-secondary" onclick="clearBookingFilter()">Zur&uuml;cksetzen</button>
         </div>
       </div>
-
       <div class="panel">
         <h2>Buchung erfassen</h2>
         <form id="booking-form" class="form-grid">
-          <input type="hidden" id="booking-id">
           <div class="form-row">
             <label for="booking-user">Nutzer</label>
-            <select id="booking-user">
-              <option value="">&ndash; Nutzer w&auml;hlen &ndash;</option>
-            </select>
+            <select id="booking-user"><option value="">&ndash; Nutzer w&auml;hlen &ndash;</option></select>
           </div>
           <div class="form-row">
             <label for="booking-property">Unterkunft</label>
-            <select id="booking-property">
-              <option value="">&ndash; Unterkunft w&auml;hlen &ndash;</option>
-            </select>
+            <select id="booking-property"><option value="">&ndash; Unterkunft w&auml;hlen &ndash;</option></select>
           </div>
           <div class="form-row">
             <label for="booking-checkin">Check-In</label>
@@ -52,13 +41,11 @@ function getBookingsTemplate() {
           </div>
         </form>
       </div>
-
       <div class="panel">
         <div class="panel-header">
           <h2>Alle Buchungen</h2>
           <button class="btn btn-sm" onclick="loadBookings()">Aktualisieren</button>
         </div>
-        <div id="bookings-query" class="query-area"></div>
         <div id="bookings-table"></div>
       </div>
     </section>
@@ -70,70 +57,44 @@ function getBookingsTemplate() {
 let _bookingsCache = []
 
 async function initBookings() {
-  await Promise.all([
-    populateBookingUsers(),
-    populateBookingProperties()
-  ])
+  try {
+    fillSelect(document.getElementById('booking-user'),
+      (await Api.getUsers()).data, 'id', 'name', '– Nutzer wählen –')
+  } catch { document.getElementById('booking-user').innerHTML = '<option value="">Fehler</option>' }
+
+  try {
+    const props = (await Api.getProperties({})).data
+      .map(p => ({ id: p.id, label: `${p.name} (${p.stadt ?? '?'})` }))
+    fillSelect(document.getElementById('booking-property'), props, 'id', 'label', '– Unterkunft wählen –')
+  } catch { document.getElementById('booking-property').innerHTML = '<option value="">Fehler</option>' }
+
   setupBookingForm()
   await loadBookings()
 }
 
-async function populateBookingUsers() {
-  const sel = document.getElementById('booking-user')
-  try {
-    const result = await Api.getUsers()
-    fillSelect(sel, result.data, 'id', 'name', '– Nutzer wählen –')
-  } catch (e) {
-    sel.innerHTML = '<option value="">Fehler beim Laden</option>'
-  }
-}
-
-async function populateBookingProperties() {
-  const sel = document.getElementById('booking-property')
-  try {
-    const result = await Api.getProperties({})
-    const items = result.data.map(p => ({
-      id:    p.id,
-      label: `${p.name} (${p.stadt ?? '?'})`
-    }))
-    fillSelect(sel, items, 'id', 'label', '– Unterkunft wählen –')
-  } catch (e) {
-    sel.innerHTML = '<option value="">Fehler beim Laden</option>'
-  }
-}
-
 function bookingActions(row) {
-  return `
-    <button class="btn btn-xs btn-delete"
-      onclick="confirmDeleteBooking('${escHtml(row.id)}')">L&ouml;schen</button>
-  `
+  return `<button class="btn btn-xs btn-delete"
+    onclick="confirmDeleteBooking('${escHtml(row.id)}')">L&ouml;schen</button>`
 }
 
 async function loadBookings() {
   try {
     const result = await Api.getBookings()
     _bookingsCache = result.data
-    // Filter-Dropdowns mit vorhandenen Werten befüllen
     const users = [...new Set(_bookingsCache.map(b => b.user))].sort()
     const props = [...new Set(_bookingsCache.map(b => b.property))].sort()
     fillSelect(document.getElementById('booking-filter-user'),     users.map(u => ({v: u})), 'v', 'v', 'Alle Nutzer')
     fillSelect(document.getElementById('booking-filter-property'), props.map(p => ({v: p})), 'v', 'v', 'Alle Unterkünfte')
-
     renderTable(_bookingsCache, document.getElementById('bookings-table'), bookingActions)
-  } catch (e) {
-    toast('Buchungen konnten nicht geladen werden: ' + e.message, 'error')
-  }
+  } catch (e) { toast('Buchungen konnten nicht geladen werden: ' + e.message, 'error') }
 }
 
 function searchBookings() {
   const user = document.getElementById('booking-filter-user').value
   const prop = document.getElementById('booking-filter-property').value
-
-  const filtered = _bookingsCache.filter(b => {
-    const matchUser = !user || b.user     === user
-    const matchProp = !prop || b.property === prop
-    return matchUser && matchProp
-  })
+  const filtered = _bookingsCache.filter(b =>
+    (!user || b.user === user) && (!prop || b.property === prop)
+  )
   renderTable(filtered, document.getElementById('bookings-table'), bookingActions)
 }
 
@@ -146,33 +107,24 @@ function clearBookingFilter() {
 function setupBookingForm() {
   document.getElementById('booking-form').onsubmit = async (e) => {
     e.preventDefault()
-
     const userId     = document.getElementById('booking-user').value
     const propertyId = document.getElementById('booking-property').value
     const checkIn    = document.getElementById('booking-checkin').value
     const checkOut   = document.getElementById('booking-checkout').value
     const price      = document.getElementById('booking-price').value
 
-    const fehlend = []
-    if (!userId)     fehlend.push('Nutzer')
-    if (!propertyId) fehlend.push('Unterkunft')
-    if (!checkIn)    fehlend.push('Check-In Datum')
-    if (!checkOut)   fehlend.push('Check-Out Datum')
-    if (!price)      fehlend.push('Preis')
-    if (fehlend.length) {
-      toast('Bitte trage noch ein: ' + fehlend.join(', '), 'error')
-      return
-    }
+    const fehlend = [
+      [userId,     'Nutzer'], [propertyId, 'Unterkunft'],
+      [checkIn,    'Check-In'], [checkOut,   'Check-Out'], [price, 'Preis'],
+    ].filter(([v]) => !v).map(([, l]) => l)
+    if (fehlend.length) { toast('Bitte trage noch ein: ' + fehlend.join(', '), 'error'); return }
 
-    const data = { userId, propertyId, checkIn, checkOut, price }
     try {
-      await Api.createBooking(data)
+      await Api.createBooking({ userId, propertyId, checkIn, checkOut, price })
       toast('Buchung erfolgreich angelegt')
       document.getElementById('booking-form').reset()
       await loadBookings()
-    } catch (e) {
-      toast('Fehler: ' + e.message, 'error')
-    }
+    } catch (e) { toast('Fehler: ' + e.message, 'error') }
   }
 }
 
@@ -182,7 +134,5 @@ async function confirmDeleteBooking(id) {
     await Api.deleteBooking(id)
     toast('Buchung gelöscht')
     await loadBookings()
-  } catch (e) {
-    toast('Fehler beim Löschen: ' + e.message, 'error')
-  }
+  } catch (e) { toast('Fehler beim Löschen: ' + e.message, 'error') }
 }

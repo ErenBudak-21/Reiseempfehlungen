@@ -23,14 +23,19 @@ RETURN users, properties, bookings, avg_preis
 ```cypher
 MATCH (u:User)
 OPTIONAL MATCH (u)-[:PREFERS]->(c:Category)
-RETURN u.id AS id, u.name AS name, u.email AS email, u.age AS age,
+RETURN u.id AS id, u.name AS name, u.email AS email,
        c.name AS präferenz
 ORDER BY toInteger(substring(u.id, 1)) ASC
 ```
 
-### Nutzer erstellen
+### Nutzer erstellen (ID wird serverseitig aus DB-Maximum berechnet)
 ```cypher
-CREATE (u:User {id: $id, name: $name, email: $email, age: toInteger($age)})
+OPTIONAL MATCH (existing:User)
+WITH coalesce(max(toInteger(substring(existing.id, 1))), 0) + 1 AS nextNum
+CREATE (u:User {
+  id: CASE WHEN nextNum < 10 THEN 'U0' + toString(nextNum) ELSE 'U' + toString(nextNum) END,
+  name: $name, email: $email
+})
 WITH u
 OPTIONAL MATCH (c:Category {name: $praeferenz})
 FOREACH (cat IN CASE WHEN c IS NOT NULL THEN [c] ELSE [] END |
@@ -39,14 +44,22 @@ FOREACH (cat IN CASE WHEN c IS NOT NULL THEN [c] ELSE [] END |
 RETURN u.id AS id, u.name AS name
 ```
 
-### Nutzer ändern
+### Nutzer ändern (inkl. PREFERS-Verknüpfung)
 ```cypher
 MATCH (u:User {id: $id})
-SET u.name = $name, u.email = $email, u.age = toInteger($age)
+SET u.name = $name, u.email = $email
+WITH u
+OPTIONAL MATCH (u)-[r:PREFERS]->()
+DELETE r
+WITH u
+OPTIONAL MATCH (c:Category {name: $praeferenz})
+FOREACH (cat IN CASE WHEN c IS NOT NULL THEN [c] ELSE [] END |
+  CREATE (u)-[:PREFERS]->(cat)
+)
 RETURN u.id AS id, u.name AS name
 ```
 
-### Nutzer löschen (inkl. Buchungen)
+### Nutzer löschen (inkl. Buchungen per DETACH)
 ```cypher
 MATCH (u:User {id: $id})
 OPTIONAL MATCH (u)-[:MADE]->(b:Booking)
@@ -60,16 +73,20 @@ DETACH DELETE u, b
 ### Unterkünfte lesen (mit optionalen Filtern)
 ```cypher
 -- Ohne Filter (alle Unterkünfte):
-MATCH (p:Property)-[:LOCATED_IN]->(city:City)-[:IN_COUNTRY]->(country:Country)
+MATCH (p:Property)-[:LOCATED_IN]->(city:City)
+OPTIONAL MATCH (city)-[:IN_COUNTRY]->(country:Country)
+WITH p, city, collect(country)[0] AS country
 OPTIONAL MATCH (p)-[:OF_CATEGORY]->(cat:Category)
 RETURN p.id AS id, p.name AS name, p.type AS type,
        p.pricePerNight AS preis, p.rating AS rating,
        city.name AS stadt, country.name AS land, cat.name AS kategorie
 ORDER BY toInteger(substring(p.id, 1)) ASC
 
--- Mit Filtern (dynamisch kombiniert, z.B. Kategorie + Stadt + Rating):
-MATCH (p:Property)-[:LOCATED_IN]->(city:City)-[:IN_COUNTRY]->(country:Country)
+-- Mit Stadtfilter und/oder Mindestrating:
+MATCH (p:Property)-[:LOCATED_IN]->(city:City)
 WHERE city.name = $city AND p.rating >= $minRating
+OPTIONAL MATCH (city)-[:IN_COUNTRY]->(country:Country)
+WITH p, city, collect(country)[0] AS country
 MATCH (p)-[:OF_CATEGORY]->(cat:Category)
 WHERE cat.name = $category
 RETURN p.id AS id, p.name AS name, p.type AS type,
@@ -78,13 +95,23 @@ RETURN p.id AS id, p.name AS name, p.type AS type,
 ORDER BY toInteger(substring(p.id, 1)) ASC
 ```
 
-### Unterkunft erstellen (mit Verknüpfungen zu City und Category)
+> `collect(country)[0]` stellt sicher, dass eine Unterkunft auch dann nur einmal erscheint,
+> wenn eine Stadt mehrere Country-Verknüpfungen hat.
+
+### Unterkunft erstellen (mit City-, Country- und Category-Verknüpfung)
 ```cypher
+OPTIONAL MATCH (existing:Property)
+WITH coalesce(max(toInteger(substring(existing.id, 1))), 0) + 1 AS nextNum
 MERGE (city:City {name: $cityName})
+FOREACH (ignored IN CASE WHEN $countryName <> '' THEN [1] ELSE [] END |
+  MERGE (country:Country {name: $countryName})
+  MERGE (city)-[:IN_COUNTRY]->(country)
+)
 CREATE (p:Property {
-  id: $id, name: $name, type: $type,
+  id: CASE WHEN nextNum < 10 THEN 'P0' + toString(nextNum) ELSE 'P' + toString(nextNum) END,
+  name: $name, type: $type,
   pricePerNight: toFloat($pricePerNight),
-  rating: toFloat($rating)
+  rating: toInteger($rating)
 })-[:LOCATED_IN]->(city)
 WITH p
 OPTIONAL MATCH (cat:Category {name: $categoryName})
@@ -99,11 +126,16 @@ RETURN p.id AS id, p.name AS name
 MATCH (p:Property {id: $id})
 SET p.name = $name, p.type = $type,
     p.pricePerNight = toFloat($pricePerNight),
-    p.rating = toFloat($rating)
+    p.rating = toInteger($rating)
 WITH p
 OPTIONAL MATCH (p)-[r:LOCATED_IN]->()
 DELETE r
+WITH p
 MERGE (city:City {name: $cityName})
+WITH p, city
+OPTIONAL MATCH (city)-[oldRel:IN_COUNTRY]->()
+DELETE oldRel
+WITH p, city
 FOREACH (ignored IN CASE WHEN $countryName <> '' THEN [1] ELSE [] END |
   MERGE (country:Country {name: $countryName})
   MERGE (city)-[:IN_COUNTRY]->(country)
@@ -127,20 +159,21 @@ DETACH DELETE p
 MATCH (u:User)-[:MADE]->(b:Booking)-[:FOR]->(p:Property)
 RETURN b.id AS id, u.name AS user, p.name AS property,
        b.checkIn AS checkIn, b.checkOut AS checkOut,
-       b.price AS preis, b.numGuests AS gäste
+       b.price AS preis
 ORDER BY toInteger(substring(b.id, 1)) ASC
 ```
 
 ### Buchung anlegen – Verknüpfungskette (User)-[:MADE]->(Booking)-[:FOR]->(Property)
 ```cypher
+OPTIONAL MATCH (existing:Booking)
+WITH coalesce(max(toInteger(substring(existing.id, 1))), 0) + 1 AS nextNum
 MATCH (u:User {id: $userId})
 MATCH (p:Property {id: $propertyId})
 CREATE (u)-[:MADE]->(b:Booking {
-  id: $id,
+  id: CASE WHEN nextNum < 10 THEN 'B0' + toString(nextNum) ELSE 'B' + toString(nextNum) END,
   checkIn: date($checkIn),
   checkOut: date($checkOut),
-  price: toFloat($price),
-  numGuests: toInteger($numGuests)
+  price: toFloat($price)
 })-[:FOR]->(p)
 RETURN b.id AS id, u.name AS user, p.name AS property
 ```
@@ -176,10 +209,10 @@ ORDER BY b.checkIn
 
 ## 6. Aggregation mit Filter
 
-### Ø Preis pro Stadt – nur Unterkünfte mit Rating ≥ 4
+### Ø Buchungspreis pro Stadt – nur Unterkünfte mit Rating ≥ 4
 ```cypher
 MATCH (b:Booking)-[:FOR]->(p:Property)-[:LOCATED_IN]->(city:City)
-WHERE p.rating >= 4.0
+WHERE p.rating >= 4
 RETURN city.name AS stadt,
        count(b) AS anzahl_buchungen,
        round(avg(b.price) * 100) / 100 AS durchschnittspreis,
@@ -199,7 +232,7 @@ ORDER BY anzahl_buchungen DESC
 
 ---
 
-## 7. Reiseempfehlung – Collaborative Filtering
+## 7. Reiseempfehlung – Collaborative Filtering mit Präferenz-Boost
 
 ```cypher
 MATCH (ich:User {id: $userId})-[:MADE]->(:Booking)-[:FOR]->(gemeinsam:Property)

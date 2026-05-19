@@ -4,23 +4,16 @@ function getPropertiesTemplate() {
   return `
     <section id="tab-properties" class="tab-section">
       <h1>Unterk&uuml;nfte</h1>
-
       <div class="panel">
         <h2>Filter / Suche</h2>
         <div class="filter-row">
-          <select id="prop-filter-category">
-            <option value="">Alle Kategorien</option>
-          </select>
-          <select id="prop-filter-city">
-            <option value="">Alle St&auml;dte</option>
-          </select>
-          <input type="number" id="prop-filter-rating"
-            placeholder="Min. Rating (z.B. 4)" step="1" min="0" max="5">
+          <select id="prop-filter-category"><option value="">Alle Kategorien</option></select>
+          <select id="prop-filter-city"><option value="">Alle St&auml;dte</option></select>
+          <input type="number" id="prop-filter-rating" placeholder="Min. Rating (z.B. 4)" step="1" min="0" max="5">
           <button class="btn btn-primary" onclick="searchProperties()">Suchen</button>
           <button class="btn btn-secondary" onclick="clearPropertyFilter()">Zur&uuml;cksetzen</button>
         </div>
       </div>
-
       <div class="panel">
         <h2>Unterkunft anlegen / bearbeiten</h2>
         <form id="property-form" class="form-grid">
@@ -68,11 +61,8 @@ function getPropertiesTemplate() {
           </div>
         </form>
       </div>
-
       <div class="panel">
-        <div class="panel-header">
-          <h2>Suchergebnisse</h2>
-        </div>
+        <div class="panel-header"><h2>Suchergebnisse</h2></div>
         <div id="properties-query" class="query-area"></div>
         <div id="properties-table"></div>
       </div>
@@ -88,32 +78,9 @@ async function initProperties() {
   fillSelect(document.getElementById('prop-filter-category'), _categories, 'name', 'name', 'Alle Kategorien')
   fillSelect(document.getElementById('prop-filter-city'),     _cities,     'name', 'name', 'Alle Städte')
   fillSelect(document.getElementById('prop-category'),        _categories, 'name', 'name', '– Kategorie wählen –')
-  initStarRating()
+  initStarRating('prop-rating-stars', 'prop-rating')
   setupPropertyForm()
   await searchProperties()
-}
-
-function initStarRating() {
-  const container = document.getElementById('prop-rating-stars')
-  const input     = document.getElementById('prop-rating')
-  container.querySelectorAll('.star').forEach(star => {
-    star.addEventListener('click', () => {
-      input.value = star.dataset.value
-      highlightStars(parseInt(star.dataset.value))
-    })
-    star.addEventListener('mouseenter', () => {
-      highlightStars(parseInt(star.dataset.value))
-    })
-  })
-  container.addEventListener('mouseleave', () => {
-    highlightStars(parseInt(input.value) || 0)
-  })
-}
-
-function highlightStars(count) {
-  document.querySelectorAll('#prop-rating-stars .star').forEach(s => {
-    s.classList.toggle('active', parseInt(s.dataset.value) <= count)
-  })
 }
 
 async function searchProperties() {
@@ -124,24 +91,17 @@ async function searchProperties() {
   if (cat)    params.category  = cat
   if (city)   params.city      = city
   if (rating) params.minRating = rating
-
   try {
     const result = await Api.getProperties(params)
     _propertiesCache = result.data
-    showResult(
-      result,
-      document.getElementById('properties-query'),
-      document.getElementById('properties-table'),
-      row => `
+    showResult(result, document.getElementById('properties-query'),
+      document.getElementById('properties-table'), row => `
         <button class="btn btn-xs btn-edit"
           onclick="editProperty('${escHtml(row.id)}')">Bearbeiten</button>
         <button class="btn btn-xs btn-delete"
           onclick="confirmDeleteProperty('${escHtml(row.id)}', '${escHtml(row.name)}')">L&ouml;schen</button>
-      `
-    )
-  } catch (e) {
-    toast('Fehler bei der Suche: ' + e.message, 'error')
-  }
+      `)
+  } catch (e) { toast('Fehler bei der Suche: ' + e.message, 'error') }
 }
 
 function clearPropertyFilter() {
@@ -165,17 +125,15 @@ function setupPropertyForm() {
       countryName:   document.getElementById('prop-country').value.trim(),
       categoryName:  document.getElementById('prop-category').value,
     }
-    const fehlend = []
-    if (!data.name)        fehlend.push('Name')
-    if (!data.type)        fehlend.push('Typ')
-    if (!data.pricePerNight) fehlend.push('Preis / Nacht')
-    if (!data.rating)      fehlend.push('Rating')
-    if (!data.cityName)    fehlend.push('Stadt')
-    if (!data.countryName) fehlend.push('Land')
-    if (fehlend.length) {
-      toast('Bitte trage noch ein: ' + fehlend.join(', '), 'error')
-      return
-    }
+    const fehlend = [
+      [data.name,         'Name'],
+      [data.type,         'Typ'],
+      [data.pricePerNight,'Preis / Nacht'],
+      [data.rating,       'Rating'],
+      [data.cityName,     'Stadt'],
+      [data.countryName,  'Land'],
+    ].filter(([v]) => !v).map(([, l]) => l)
+    if (fehlend.length) { toast('Bitte trage noch ein: ' + fehlend.join(', '), 'error'); return }
 
     try {
       if (editId) {
@@ -184,15 +142,12 @@ function setupPropertyForm() {
       } else {
         await Api.createProperty(data)
         toast('Unterkunft erfolgreich angelegt')
-        // Neue Stadt in DB → Filter-Dropdown aktualisieren
         await loadSharedData()
         fillSelect(document.getElementById('prop-filter-city'), _cities, 'name', 'name', 'Alle Städte')
       }
       resetPropertyForm()
       await searchProperties()
-    } catch (e) {
-      toast('Fehler: ' + e.message, 'error')
-    }
+    } catch (e) { toast('Fehler: ' + e.message, 'error') }
   }
   document.getElementById('prop-cancel-btn').onclick = resetPropertyForm
 }
@@ -205,12 +160,12 @@ function editProperty(id) {
   document.getElementById('prop-type').value       = prop.type      ?? ''
   document.getElementById('prop-price').value      = prop.preis     ?? ''
   document.getElementById('prop-rating').value     = prop.rating    ?? ''
-  highlightStars(parseInt(prop.rating) || 0)
   document.getElementById('prop-city').value       = prop.stadt     ?? ''
   document.getElementById('prop-country').value    = prop.land      ?? ''
   document.getElementById('prop-category').value   = prop.kategorie ?? ''
-  document.getElementById('prop-submit-btn').textContent     = 'Speichern'
-  document.getElementById('prop-cancel-btn').style.display   = 'inline-flex'
+  highlightStars('prop-rating-stars', parseInt(prop.rating) || 0)
+  document.getElementById('prop-submit-btn').textContent   = 'Speichern'
+  document.getElementById('prop-cancel-btn').style.display = 'inline-flex'
   document.getElementById('property-form').scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
@@ -220,9 +175,7 @@ async function confirmDeleteProperty(id, name) {
     await Api.deleteProperty(id)
     toast('Unterkunft gelöscht')
     await searchProperties()
-  } catch (e) {
-    toast('Fehler beim Löschen: ' + e.message, 'error')
-  }
+  } catch (e) { toast('Fehler beim Löschen: ' + e.message, 'error') }
 }
 
 function resetPropertyForm() {
@@ -231,5 +184,5 @@ function resetPropertyForm() {
   document.getElementById('prop-rating').value             = ''
   document.getElementById('prop-submit-btn').textContent   = 'Erstellen'
   document.getElementById('prop-cancel-btn').style.display = 'none'
-  highlightStars(0)
+  highlightStars('prop-rating-stars', 0)
 }

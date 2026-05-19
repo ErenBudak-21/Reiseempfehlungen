@@ -74,6 +74,26 @@ function fillSelect(selectEl, items, valueKey, labelKey, emptyLabel) {
   if (current) selectEl.value = current
 }
 
+// Stern-Bewertungs-Widget (generisch, wiederverwendbar)
+function initStarRating(containerId, inputId) {
+  const container = document.getElementById(containerId)
+  const input     = document.getElementById(inputId)
+  container.querySelectorAll('.star').forEach(star => {
+    star.addEventListener('click', () => {
+      input.value = star.dataset.value
+      highlightStars(containerId, parseInt(star.dataset.value))
+    })
+    star.addEventListener('mouseenter', () => highlightStars(containerId, parseInt(star.dataset.value)))
+  })
+  container.addEventListener('mouseleave', () => highlightStars(containerId, parseInt(input.value) || 0))
+}
+
+function highlightStars(containerId, count) {
+  document.querySelectorAll(`#${containerId} .star`).forEach(s => {
+    s.classList.toggle('active', parseInt(s.dataset.value) <= count)
+  })
+}
+
 // Zeigt eine kurze Toast-Benachrichtigung
 function toast(msg, type = 'success') {
   const el = document.createElement('div')
